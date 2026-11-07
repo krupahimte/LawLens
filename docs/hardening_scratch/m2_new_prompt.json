@@ -1,0 +1,51 @@
+{
+ "case": "M2",
+ "prompt_chars": 3529,
+ "results": [
+  {
+   "trial": 1,
+   "seconds": 119.6,
+   "chars": 1745,
+   "stats": {
+    "done": true,
+    "done_reason": "stop",
+    "token_limit": 700,
+    "eval_count": 382,
+    "prompt_eval_count": 3441
+   },
+   "answer": "The difference between bail in bailable and non-bailable offences lies in the availability and conditions of bail, as defined in the Bharatiya Nagarik Suraksha Sanhita, 2023.\n\nA \"bailable offence\" is one listed in the First Schedule or made bailable by any other law, and such offences allow bail without stringent conditions [4(c)]. In contrast, a \"non-bailable offence\" is any offence not falling under a bailable category [4(c)].\n\nFor bailable offences, a person may be released on bail without conditions, or with a bond, as per Section 478(1), provided they are prepared to give bail [6]. However, for non-bailable offences, bail is not automatically granted and is subject to strict conditions and exceptions [1].\n\nSpecifically, under Section 480(1)(ii), a person accused of a non-bailable offence shall not be released on bail if:  \n(i) the offence is punishable with death or life imprisonment, or  \n(ii) the person has a prior conviction for an offence punishable with imprisonment for seven years or more, or has been convicted on two or more occasions of a cognizable offence punishable with imprisonment for three years or more but less than seven years [1].\n\nAdditionally, bail in non-bailable offences may only be granted if the Court is satisfied it is just and proper to do so, especially for special reasons, or if the accused is a child, woman, or is sick or infirm [1].\n\nIn contrast, bailable offences do not have such restrictions, and bail is generally available with minimal conditions [4(c)].\n\nThus, the key difference is that bailable offences allow bail without restrictions, while non-bailable offences restrict bail and impose strict conditions based on the nature of the offence and the accused\u2019s prior record [1][4].",
+   "478_may_be_released": false,
+   "bond_claim": false
+  },
+  {
+   "trial": 2,
+   "seconds": 54.0,
+   "chars": 1578,
+   "stats": {
+    "done": true,
+    "done_reason": "stop",
+    "token_limit": 700,
+    "eval_count": 361,
+    "prompt_eval_count": 3441
+   },
+   "answer": "The difference between bail in bailable and non-bailable offences lies in the availability and conditions of bail, as defined in the Bharatiya Nagarik Suraksha Sanhita, 2023.\n\nA \"bailable offence\" is one that is listed in the First Schedule or made bailable by any other law in force [4(c)]. In such cases, bail is generally available and can be granted without stringent conditions [4(c)]. For example, under Section 263(a), resistance to lawful apprehension is bailable [7].\n\nA \"non-bailable offence\" is any offence not falling under a bailable category [4(c)]. In such cases, bail is not automatically available and is subject to strict conditions. Under Section 480(1)(i) and (ii), a person accused of a non-bailable offence may not be released on bail if there are reasonable grounds to believe guilt of an offence punishable with death, life imprisonment, or imprisonment for seven years or more, or if previously convicted of such offences [1]. Additionally, the Court may grant bail only if the person is a child, a woman, or is sick or infirm, or if it is just and proper to do so for special reasons [1].\n\nFurthermore, for offences punishable with imprisonment of three years or more, the offence is cognizable and non-bailable, as per Section 77B of the IT Act [5], and Section 263(c)\u2013(d) of the First Schedule [7].\n\nThus, while bailable offences allow for easy bail with minimal conditions, non-bailable offences require judicial discretion and strict conditions for bail, especially where the offence carries a severe penalty or a prior conviction exists [1][4][7].",
+   "478_may_be_released": false,
+   "bond_claim": false
+  },
+  {
+   "trial": 3,
+   "seconds": 58.0,
+   "chars": 1872,
+   "stats": {
+    "done": true,
+    "done_reason": "stop",
+    "token_limit": 700,
+    "eval_count": 391,
+    "prompt_eval_count": 3441
+   },
+   "answer": "The difference between bail in bailable and non-bailable offences lies in the availability and conditions of bail, as defined in the Bharatiya Nagarik Suraksha Sanhita, 2023.\n\nA \"bailable offence\" is one that is listed in the First Schedule or made bailable by any other law; such offences allow bail without stringent conditions [4(c)]. In contrast, a \"non-bailable offence\" is any offence not falling under a bailable category [4(c)].\n\nFor bailable offences, a person may be released on bail without conditions, or with a bond, as per Section 478(1), which applies to persons not accused of non-bailable offences [6]. However, for non-bailable offences, bail is not automatically granted and is subject to strict conditions and exceptions [1].\n\nSpecifically, under Section 480(1)(ii), a person accused of a non-bailable offence shall not be released on bail if:  \n(i) the offence is punishable with death or life imprisonment, or  \n(ii) the person has a prior conviction for an offence punishable with imprisonment for seven years or more, or for two or more cognizable offences punishable with imprisonment for three years or more but less than seven years [1].\n\nAdditionally, bail in non-bailable offences requires the Court to impose conditions such as attendance, refraining from committing similar offences, and not tampering with evidence [1(3)]. Bail is also not granted without giving the Public Prosecutor an opportunity of hearing if the offence is punishable with death, life imprisonment, or seven years or more [1].\n\nIn contrast, bailable offences do not require such conditions or hearings, and are generally granted bail more readily.\n\nThus, the key difference is that bailable offences allow bail without stringent conditions, while non-bailable offences require a Court to assess reasonable grounds and impose strict conditions before granting bail [1].",
+   "478_may_be_released": false,
+   "bond_claim": false
+  }
+ ]
+}

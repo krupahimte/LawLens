@@ -1,0 +1,27 @@
+# Virtual environment (large; recreated from the dependency list)
+venv/
+
+# Python bytecode
+__pycache__/
+*.pyc
+
+# Secrets and local settings
+.env
+
+# Generated data (rebuilt from the PDFs)
+chroma_db/
+*.sqlite3
+
+# Source legal PDFs (large public documents, kept outside Git)
+data/raw/
+
+# Editor settings
+.vscode/
+
+# Derived data and OCR assets
+data/ocr/
+data/processed/
+tessdata/
+
+# Local backups of the vector index
+backups/

@@ -1,0 +1,20 @@
+system-awake request active | 19 cases | collection indian_law_en | client timeout 300.0s
+E1   answered               d=0.421  total=50.69s PASS
+E5   answered               d=0.521  total=122.89s PASS
+E8   answered               d=0.535  total=55.79s REVIEW: status
+S2   answered               d=0.298  total=57.67s PASS
+S12  answered               d=0.264  total=95.56s PASS
+S17  answered               d=0.307  total=114.78s PASS
+L2   answered               d=0.53   total=115.97s REVIEW: answer mentions expected words
+L3   answered               d=0.268  total=149.32s REVIEW: cited source text verbatim in PDF
+L4   answered               d=0.408  total=111.01s PASS
+M1   answered               d=0.338  total=103.18s PASS
+M2   answered               d=0.346  total=62.22s REVIEW: no unverified section numbers
+M3   answered               d=0.41   total=78.5s PASS
+U1   answered               d=0.585  total=31.9s REVIEW: status
+U2   answered               d=0.634  total=20.67s REVIEW: status
+U3   answered               d=0.501  total=57.56s REVIEW: status, cited source text verbatim in PDF
+U4   answered               d=0.45   total=45.49s PASS
+U5   answered               d=0.471  total=65.2s PASS
+U6   answered               d=0.491  total=49.04s REVIEW: no forbidden claims
+U7   answered               d=0.372  total=26.59s REVIEW: cited source text verbatim in PDF

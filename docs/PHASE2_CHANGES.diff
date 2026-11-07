@@ -1,0 +1,565 @@
+--- before/config.py
++++ after/config.py
+@@ -61,4 +61,10 @@
+ MAX_SCHEDULE_CHUNKS = int(os.getenv("MAX_SCHEDULE_CHUNKS", "1"))            # Schedule table chunks per answer
+ MIN_PROVISIONS_BEFORE_SCHEDULE = int(os.getenv("MIN_PROVISIONS_BEFORE_SCHEDULE", "3"))
++# ---- answer verification (rag/guardrails.py) ----------------------------------
++# Warnings come from heuristics that were measured on the 43-case baseline; "confirmed errors" are deterministic.
++QUOTE_MIN_WORDS = int(os.getenv("QUOTE_MIN_WORDS", "4"))                    # shorter quoted terms are not treated as quotations
++QUOTE_APPROX_RATIO = float(os.getenv("QUOTE_APPROX_RATIO", "0.85"))         # similarity at which a near-match is "approximate"
++SUPPORT_MIN_RATIO = float(os.getenv("SUPPORT_MIN_RATIO", "0.5"))            # share of a sentence's content words found in the sources
++MISCITED_ALL_MIN_RATIO = float(os.getenv("MISCITED_ALL_MIN_RATIO", "0.75")) # ...in ALL sources, for a "wrong source cited" warning
+ if not 1_000 <= CONTEXT_CHAR_BUDGET <= 20_000:
+     raise ValueError("CONTEXT_CHAR_BUDGET must be between 1,000 and 20,000 characters (the model window is 8,192 tokens)")
+--- before/rag/language.py
++++ after/rag/language.py
+@@ -57,4 +57,38 @@
+ }
+ 
++# Notes produced by answer verification. "Verification error" = deterministic evidence of a defect;
++# "Check" = a heuristic warning that may be wrong. Warnings are deliberately worded as invitations to check.
++VERIFICATION_NOTES = {
++    "en": {
++        "invalid_citation": "Verification error: the answer cited a source number that does not exist ({detail}); the marker was removed.",
++        "unsupported_section_reference": "Verification error: the answer mentions {detail}, which is not in the retrieved sources. Treat that reference as unverified.",
++        "quote_not_found": "Verification error: a quotation in this answer was not found in the sources. Do not rely on it.",
++        "quote_altered_legal_term": "Verification error: a quotation differs from the source in a legal term ({detail}). Read the source text.",
++        "quote_not_exact": "Check: a quotation does not match the source word for word.",
++        "quote_cited_to_wrong_source": "Check: a quotation appears in a different source from the one cited.",
++        "threshold_qualifier_mismatch": "Check: a number or duration is worded differently from the source ({detail}).",
++        "number_not_in_sources": "Check: a number or duration in the answer was not found in the sources ({detail}).",
++        "miscited_claim": "Check: a statement is cited to a source that matches it only weakly ({detail}).",
++        "weak_support": "Check: some sentences add explanation that does not appear in the cited sources. Rely on the source text.",
++    },
++    "hi": {
++        "invalid_citation": "सत्यापन त्रुटि: उत्तर में ऐसे स्रोत की संख्या दी गई जो मौजूद नहीं है ({detail}); उसे हटा दिया गया।",
++        "unsupported_section_reference": "सत्यापन त्रुटि: उत्तर में {detail} का उल्लेख है, जो प्राप्त स्रोतों में नहीं है। इसे असत्यापित मानें।",
++        "quote_not_found": "सत्यापन त्रुटि: उत्तर का एक उद्धरण स्रोतों में नहीं मिला। उस पर भरोसा न करें।",
++        "quote_altered_legal_term": "सत्यापन त्रुटि: एक उद्धरण स्रोत से किसी कानूनी शब्द में भिन्न है ({detail})। स्रोत पाठ पढ़ें।",
++        "quote_not_exact": "जाँचें: एक उद्धरण स्रोत से शब्दशः मेल नहीं खाता।",
++        "quote_cited_to_wrong_source": "जाँचें: एक उद्धरण उद्धृत स्रोत के बजाय किसी अन्य स्रोत में है।",
++        "threshold_qualifier_mismatch": "जाँचें: कोई संख्या या अवधि स्रोत से भिन्न शब्दों में लिखी है ({detail})।",
++        "number_not_in_sources": "जाँचें: उत्तर की एक संख्या या अवधि स्रोतों में नहीं मिली ({detail})।",
++        "miscited_claim": "जाँचें: एक कथन ऐसे स्रोत से उद्धृत है जो उससे केवल कमज़ोर रूप से मेल खाता है ({detail})।",
++        "weak_support": "जाँचें: कुछ वाक्य ऐसी व्याख्या जोड़ते हैं जो उद्धृत स्रोतों में नहीं है। स्रोत पाठ पर भरोसा करें।",
++    },
++}
++
++PARTIAL_PROVISION_NOTE = {
++    "en": "Only parts {parts} of {total} of {label} were available to the model, so anything listed from it may be incomplete. Open the original page for the full text.",
++    "hi": "{label} के {total} भागों में से केवल भाग {parts} मॉडल को उपलब्ध थे, इसलिए उससे दी गई कोई भी सूची अधूरी हो सकती है। पूरे पाठ के लिए मूल पृष्ठ खोलें।",
++}
++
+ HINDI_PAUSED = ("Hindi support is temporarily paused while the Hindi source documents are being verified. "
+                 "Please ask your question in English. / हिंदी समर्थन अभी अस्थायी रूप से बंद है; कृपया अंग्रेज़ी में पूछें।")
+--- before/main.py
++++ after/main.py
+@@ -63,4 +63,5 @@
+     timings: dict[str, float]
+     context_report: dict | None = None      # optional: included/excluded chunks and reasons (answered turns)
++    verification: dict | None = None        # optional: confirmed errors, warnings, quotation checks (answered turns)
+ 
+ 
+--- before/rag/pipeline.py
++++ after/rag/pipeline.py
+@@ -64,5 +64,6 @@
+ 
+ def _final(status: str, answer: str, language: str, sources: list[dict], notes: list[str],
+-           conversation_id: str | None, timings: dict, standalone: str, context_report: dict | None = None) -> dict:
++           conversation_id: str | None, timings: dict, standalone: str, context_report: dict | None = None,
++           verification: dict | None = None) -> dict:
+     return {
+         "type": "final", "status": status, "answer": answer, "language": language,
+@@ -70,4 +71,5 @@
+         "conversation_id": conversation_id, "standalone_question": standalone, "timings": timings,
+         "context_report": context_report,   # which chunks the model saw / did not see, and why (answered turns only)
++        "verification": verification,       # confirmed errors, warnings and quotation checks (answered turns only)
+     }
+ 
+@@ -122,5 +124,7 @@
+ 
+     t = time.time()
+-    messages = generation.build_messages(standalone, context, answer_lang)  # no history: avoids topic leakage
++    # Long provisions the question NAMED but that only partly fitted the budget: the model is told, and so is the user.
++    partial = [p for p in context_report.get("truncated_provisions", []) if p.get("exact")]
++    messages = generation.build_messages(standalone, context, answer_lang, partial=partial)  # no history: avoids topic leakage
+     pieces: list[str] = []
+     for piece in generation.stream_chat(messages):
+@@ -129,10 +133,9 @@
+     timings["generation_s"] = round(time.time() - t, 2)
+ 
+-    answer = guardrails.strip_invalid_citations("".join(pieces).strip(), len(context))
+-    notes: list[str] = []
+-    bad_refs = guardrails.unverified_references(answer, standalone, context)
+-    if bad_refs:
+-        label = ", ".join(bad_refs)
+-        notes.append(UNVERIFIED_REFERENCE_NOTE[answer_lang].format(refs=label))
++    raw_answer = "".join(pieces).strip()
++    verification = guardrails.verify_answer(raw_answer, standalone, context)      # on the RAW text, so bad markers are seen
++    answer = guardrails.strip_invalid_citations(raw_answer, len(context))
++    notes: list[str] = guardrails.verification_notes(verification, answer_lang)
++    notes += guardrails.partial_provision_notes(partial, answer_lang)
+     if any(c["text_source"] == "ocr" for c in context):
+         notes.append(OCR_NOTE[answer_lang])
+@@ -143,5 +146,5 @@
+     conversation.add_message(conversation_id, "user", question)
+     conversation.add_message(conversation_id, "assistant", answer)
+-    yield _final("answered", answer, answer_lang, sources, notes, conversation_id, timings, standalone, context_report)
++    yield _final("answered", answer, answer_lang, sources, notes, conversation_id, timings, standalone, context_report, verification)
+ 
+ 
+--- before/rag/generation.py
++++ after/rag/generation.py
+@@ -16,15 +16,27 @@
+ from rag.language import LANGUAGE_NAMES
+ 
+-SYSTEM_PROMPT = """You are an assistant that explains Indian law using ONLY the numbered SOURCES provided.
++# NOTE: these instructions make faithful answers more likely; they do not guarantee them. A small local model can
++# still misread a condition. rag/guardrails.py therefore verifies quotations, citations and numbers afterwards, and
++# says plainly which of its findings are confirmed errors and which are only warnings.
++SYSTEM_PROMPT = """You are an assistant that explains Indian law using ONLY the numbered SOURCES provided. You give legal information, not legal advice: do not tell the user what they personally should do in a dispute.
+ 
+-Rules:
+-1. Use only facts that appear in the SOURCES. Do not use outside knowledge and do not guess.
+-2. Cite every statement with the source number in square brackets, like [1] or [2][3].
+-3. Never mention an Act, section or article number that does not appear in the SOURCES.
+-4. If the SOURCES do not contain the answer, say clearly that the available documents do not answer it.
+-5. Do not quote text from sources marked OCR-UNCERTAIN; describe it generally and tell the user to check the original page.
+-6. You give legal information, not legal advice. Do not tell the user what they personally should do in a legal dispute.
+-7. Be concise: a short direct answer first, then key details such as conditions or punishment.
+-8. Write the whole answer in {language}. Keep section numbers and Act names recognisable."""
++GROUNDING
++1. Use only facts that appear in the SOURCES. Do not use outside knowledge, other laws or memory, even to fill a gap. If the SOURCES lack something needed, say what is missing instead of guessing.
++2. Never mention an Act, section or article number that does not appear in the SOURCES.
++3. After each sentence, cite the number of the source that states it, like [1] or [2][3]. Cite a source only for what it actually says. Do not cite anything when you decline to answer.
++4. If the SOURCES do not answer the question, begin your reply with exactly: "The available documents do not answer" and then say briefly why.
++
++LEGAL ACCURACY (the commonest mistakes; check each against the SOURCES before you answer)
++5. Keep every condition, exception, proviso ("Provided that ...") and explanation. Never drop or soften one.
++6. Keep "shall", "shall not", "may" and "must" exactly as written. A prohibition must never be restated as a permission. Example: if a source says "a licence shall not be granted if the applicant is under eighteen or has a prior conviction", the licence is refused if EITHER applies; never write that it may be granted when one of them applies.
++7. Keep AND and OR exactly. Conditions joined by "and" must all hold; conditions joined by "or" need only one. Say which.
++8. Copy numbers, durations, amounts and qualifiers exactly. "three years and above", "more than three years", "not less than three years", "up to three years" and a bare "three years" are all different. When a source gives different consequences for different thresholds, keep them separate.
++9. When you state a condition, exception, threshold or punishment, put the source's own words in double quotation marks, copied exactly (about 30 words at most), and cite them.
++10. A source labelled "part k of N", or a note about partial provisions, means the full text was NOT supplied. Never present a list or definition taken from it as complete; say that it is partial.
++
++STYLE
++11. Give a short direct answer first, then the key details. Do not add explanations, opinions or conclusions that the SOURCES do not state.
++12. A source marked "OCR" may contain reading errors: do not quote it; describe it generally and tell the user to check the original page.
++13. Write the whole answer in {language}. Keep section numbers and Act names recognisable."""
+ 
+ 
+@@ -37,4 +49,27 @@
+ 
+ 
++def provision_label(provision: str) -> str:
++    """'cp_en:section:2' -> 'The Consumer Protection Act, 2019, Section 2'."""
++    doc_id, unit, number = provision.split(":", 2)
++    doc = BY_ID[doc_id]
++    return f"{doc.act_name}, {unit_label(doc, unit)} {number}"
++
++
++def format_parts(parts: list[int]) -> str:
++    """[1, 2, 3] -> '1-3'; [1, 2, 4] -> '1-2, 4'."""
++    runs, start, prev = [], None, None
++    for p in sorted(parts):
++        if start is None:
++            start = prev = p
++        elif p == prev + 1:
++            prev = p
++        else:
++            runs.append((start, prev))
++            start = prev = p
++    if start is not None:
++        runs.append((start, prev))
++    return ", ".join(str(a) if a == b else f"{a}-{b}" for a, b in runs)
++
++
+ def build_context(chunks: list[dict]) -> str:
+     blocks = []
+@@ -44,12 +79,22 @@
+         if c["text_source"] == "ocr":
+             note = " | OCR text (may contain errors)"
++        part = f" | part {c['part']} of {c['parts_total']}" if int(c.get("parts_total", 1)) > 1 else ""
+         blocks.append(
+             f"[{i}] {source_label(c)} | {'Hindi' if c['language'] == 'hi' else 'English'} text, "
+-            f"page {c['page_start']} of {doc.filename}{note}\n{c['text']}"
++            f"page {c['page_start']} of {doc.filename}{part}{note}\n{c['text']}"
+         )
+     return "\n\n".join(blocks)
+ 
+ 
+-def build_messages(question: str, chunks: list[dict], answer_language: str, history: list[dict] | None = None) -> list[dict]:
++def partial_block(partial: list[dict] | None) -> str:
++    """Tell the model which long provisions it only received in part (from the context report)."""
++    lines = [f"PARTIAL PROVISIONS: {provision_label(p['provision'])} is long and only parts {format_parts(p['parts_included'])} of "
++             f"{p['parts_total']} are included in the SOURCES, so it is INCOMPLETE. Any list or definitions you give from it are partial: "
++             f"say so, and do not describe it as complete." for p in (partial or [])]
++    return ("\n\n" + "\n".join(lines)) if lines else ""
++
++
++def build_messages(question: str, chunks: list[dict], answer_language: str, history: list[dict] | None = None,
++                   partial: list[dict] | None = None) -> list[dict]:
+     system = SYSTEM_PROMPT.format(language=LANGUAGE_NAMES[answer_language])
+     messages = [{"role": "system", "content": system}]
+@@ -58,5 +103,7 @@
+     messages.append({
+         "role": "user",
+-        "content": f"SOURCES:\n{build_context(chunks)}\n\nQUESTION: {question}\n\nAnswer in {LANGUAGE_NAMES[answer_language]}, citing sources like [1].",
++        "content": (f"SOURCES:\n{build_context(chunks)}{partial_block(partial)}\n\nQUESTION: {question}\n\n"
++                    f"Answer in {LANGUAGE_NAMES[answer_language]}, citing sources like [1]. "
++                    f"Before answering, check every condition, negation and number against the SOURCES."),
+     })
+     return messages
+--- before/rag/guardrails.py
++++ after/rag/guardrails.py
+@@ -1,11 +1,24 @@
+ """Legal guardrails applied around the language model.
+ 
+-* is the retrieved evidence good enough to answer at all?
+-* does the generated answer cite only real sources?
+-* does it mention any section/article that was not in the sources?
++Before generation: is the retrieved evidence good enough to answer at all?
++After generation (``verify_answer``): does the answer stay faithful to the sources it was given?
++
++Findings are split into two kinds, and the difference matters:
++
++* ERRORS are deterministic: a citation to a source that does not exist, a quotation that is not in any source
++  (or that changes "shall"/"not"/"or" inside the quotation), a section number that no source contains.
++* WARNINGS are heuristics measured on the 43-case baseline: a sentence whose words are mostly absent from the sources,
++  a statement cited to a source that matches it only weakly, a number whose qualifier ("more than" versus "and above")
++  differs from the source. They can be wrong and are worded as invitations to check.
++* INFO is bookkeeping (for example a refusal that still carries citation markers).
++
++What this module cannot do: it works on words, not meaning. If an answer restates a prohibition as a permission using
++the source's own words (the M2 baseline failure), no word-level check can see it. That needs a second model pass.
+ """
++import difflib
+ import re
+ 
+ import config
++from rag import catalog
+ from rag.preprocessing import normalize_unicode
+ 
+@@ -20,4 +33,80 @@
+ 
+ 
++# --------------------------------------------------------------------------- text helpers
++LEGAL_WORDS = {"not", "no", "nor", "never", "neither", "cannot", "without", "unless", "except",
++               "shall", "may", "must", "and", "or"}
++TOKEN_RE = re.compile(r"[a-z0-9]+(?:'[a-z]+)?")
++QUOTE_RE = re.compile(r"[“\"]([^“”\"\n]{8,}?)[”\"]")
++_PUNCTUATION_MAP = (("‘", "'"), ("’", "'"), ("“", '"'), ("”", '"'), ("–", "-"), ("—", "-"))
++
++REFUSAL_RE = re.compile(
++    r"^(?:the )?(?:available |provided )?(?:legal )?(?:documents|sources)[^.]{0,80}?\b(?:do|does) not (?:answer|contain|address|provide|cover|include)\b", re.I)
++# A sentence that merely STATES that something is absent ("Section 999 is not mentioned in the sources") must not be
++# flagged for mentioning it. This only ever suppresses a flag; it never creates one.
++ABSENCE_RE = re.compile(
++    r"\b(?:not (?:been )?(?:mentioned|found|present|included|contained|provided|covered|addressed|specified|listed|referred)"
++    r"|(?:does|do) not (?:appear|mention|exist|contain|address|refer|specify|answer)"
++    r"|no (?:information|mention|reference|record|source)|cannot be (?:confirmed|determined|verified|found)"
++    r"|none of the (?:provided )?sources|(?:is|are) not in|nothing (?:in|about))\b", re.I)
++
++_STOP = set("""this that with from have been were they them their there then than which what when where will would could should shall must such
++other also only into upon under over about after before between within without section sections sanhita article articles provided provision provisions
++source sources answer available documents following includes include including included means defined defines provides states according therefore thus
++however based given listed note relevant relates related question each every both some more most many much very same these those whose whom while
++because since although though whether either neither any all can may might does doing done make makes made being""".split())
++
++
++def _norm(text: str) -> str:
++    import unicodedata
++    t = unicodedata.normalize("NFKC", text).lower()
++    for a, b in _PUNCTUATION_MAP:
++        t = t.replace(a, b)
++    return t
++
++
++def tokens(text: str) -> list[str]:
++    return TOKEN_RE.findall(_norm(text))
++
++
++def _stem(w: str) -> str:
++    if w.endswith("ies") and len(w) > 5: return w[:-3] + "y"
++    if w.endswith("ing") and len(w) > 6: return w[:-3]
++    if w.endswith("ed") and len(w) > 5: return w[:-2]
++    if w.endswith("es") and len(w) > 5: return w[:-2]
++    if w.endswith("s") and not w.endswith("ss") and len(w) > 4: return w[:-1]
++    return w
++
++
++def _act_name_words() -> set[str]:
++    """Act names are repeated in answers but are not part of a provision's own text, so they are not evidence either way."""
++    words: set[str] = set()
++    for d in catalog.DOCUMENTS:
++        words |= set(re.findall(r"[a-z]{4,}", d.act_name_en.lower()))
++    return words
++
++
++_STOP_STEMS = {_stem(w) for w in _STOP | _act_name_words()}
++
++
++def content_stems(text: str, exclude: frozenset | set = frozenset()) -> set[str]:
++    return {_stem(w) for w in re.findall(r"[a-z]{4,}", _norm(text))} - _STOP_STEMS - set(exclude)
++
++
++def sentences(answer: str) -> list[str]:
++    out: list[str] = []
++    for line in answer.split("\n"):
++        line = line.strip()
++        if line:
++            out += [p.strip() for p in re.split(r"(?<=[.!?])\s+(?=[A-Z“\"(\[])", line) if p.strip()]
++    return out
++
++
++def is_refusal(answer: str) -> bool:
++    """True when the answer declines to answer. The prompt tells the model to begin with a fixed phrase."""
++    first = answer.strip().split("\n")[0].strip() if answer.strip() else ""
++    return bool(REFUSAL_RE.search(first))
++
++
++# --------------------------------------------------------------------------- section references
+ def referenced_sections(text: str) -> set[str]:
+     """Section/article numbers mentioned in a piece of text (lists like 'sections 3, 4 and 5' included)."""
+@@ -35,5 +124,5 @@
+     """Numbers the answer may legitimately mention: the cited sections and anything the sources
+     themselves cross-reference. Numbers that only the USER mentioned are deliberately NOT allowed: if someone
+-    asks about a non-existent 'Section 999' and the answer repeats it, that must be flagged as unverified.
++    asks about a non-existent 'Section 999' and the answer repeats it as if it existed, that must be flagged.
+     (A genuine 'Section 103' question is fine: the exact lookup puts Section 103 into the sources.)"""
+     allowed: set[str] = set()
+@@ -44,9 +133,21 @@
+ 
+ 
++def _unsupported_references(answer: str, allowed: set[str]) -> dict[str, str]:
++    """ref -> the sentence that mentions it. Sentences that state a reference is ABSENT are skipped."""
++    bad: dict[str, str] = {}
++    for sentence in sentences(answer):
++        if ABSENCE_RE.search(sentence):
++            continue
++        for ref in referenced_sections(sentence) - allowed:
++            bad.setdefault(ref, sentence)
++    return bad
++
++
+ def unverified_references(answer: str, question: str, context: list[dict]) -> list[str]:
+-    allowed = allowed_sections(question, context)
+-    return sorted(referenced_sections(answer) - allowed, key=lambda s: (len(s), s))
+-
+-
++    bad = _unsupported_references(answer, allowed_sections(question, context))
++    return sorted(bad, key=lambda s: (len(s), s))
++
++
++# --------------------------------------------------------------------------- citations
+ def strip_invalid_citations(answer: str, n_sources: int) -> str:
+     """Remove [n] markers that point to a source number that does not exist."""
+@@ -58,2 +159,208 @@
+ def uses_citations(answer: str) -> bool:
+     return bool(CITATION_RE.search(answer))
++
++
++# --------------------------------------------------------------------------- quotations
++def extract_quotes(answer: str) -> list[dict]:
++    """Double-quoted passages of at least QUOTE_MIN_WORDS words, with the citation markers that follow them
++    in the same sentence. Shorter quoted terms (a defined word such as "act") are not quotations."""
++    found = []
++    for m in QUOTE_RE.finditer(answer):
++        text = m.group(1).strip()
++        if len(tokens(text)) < config.QUOTE_MIN_WORDS:
++            continue
++        rest = answer[m.end():].split("\n")[0]
++        end = re.search(r"[.!?](?:\s|$)", rest)
++        cited = [int(x) for x in CITATION_RE.findall(rest[: end.end() if end else len(rest)])]
++        found.append({"quote": text, "cited": cited})
++    return found
++
++
++def _legal_changes(quote_tokens: list[str], window: list[str]) -> list[str]:
++    changed: set[str] = set()
++    for tag, i1, i2, j1, j2 in difflib.SequenceMatcher(None, quote_tokens, window).get_opcodes():
++        if tag != "equal":
++            changed |= (set(quote_tokens[i1:i2]) | set(window[j1:j2])) & LEGAL_WORDS
++    return sorted(changed)
++
++
++def verify_quote(quote: str, context: list[dict]) -> dict:
++    """Is this quotation in the sources? Words are compared, so case, punctuation, dashes, curly quotes and line
++    breaks do not matter. A near-match is 'approximate', unless the difference touches a legal word
++    (not / shall / may / and / or ...), which makes it 'altered_legal_term'."""
++    q = tokens(quote)
++    segments = [s for s in (tokens(p) for p in re.split(r"…|\.\.\.", quote)) if len(s) >= 2]
++    chunk_tokens = [tokens(c["text"]) for c in context]
++    joined = [" " + " ".join(t) + " " for t in chunk_tokens]
++    exact = [i for i, j in enumerate(joined) if segments and all(" " + " ".join(s) + " " in j for s in segments)]
++    if exact:
++        return {"status": "verified", "sources": [i + 1 for i in exact]}
++    if len(segments) != 1:                       # an ellipsis quotation is only checked piece by piece
++        return {"status": "not_found", "sources": [], "ratio": 0.0}
++    qset, best = set(q), (0.0, -1, [])
++    for i, t in enumerate(chunk_tokens):
++        for length in range(max(2, len(q) - 2), len(q) + 3):
++            for start in range(0, max(1, len(t) - length + 1)):
++                window = t[start:start + length]
++                if len(qset & set(window)) < 0.6 * len(qset):
++                    continue
++                ratio = difflib.SequenceMatcher(None, q, window).ratio()
++                if ratio > best[0]:
++                    best = (ratio, i, window)
++    ratio, idx, window = best
++    if ratio >= config.QUOTE_APPROX_RATIO:
++        changed = _legal_changes(q, window)
++        return {"status": "altered_legal_term" if changed else "approximate", "sources": [idx + 1],
++                "ratio": round(ratio, 3), "changed": changed}
++    return {"status": "not_found", "sources": [], "ratio": round(ratio, 3)}
++
++
++# --------------------------------------------------------------------------- numbers and thresholds
++_TENS = {"twenty": 20, "thirty": 30, "forty": 40, "fifty": 50, "sixty": 60, "seventy": 70, "eighty": 80, "ninety": 90}
++_NUMWORDS = {"one": 1, "two": 2, "three": 3, "four": 4, "five": 5, "six": 6, "seven": 7, "eight": 8, "nine": 9, "ten": 10, "eleven": 11,
++             "twelve": 12, "fourteen": 14, "fifteen": 15, "eighteen": 18, **_TENS}
++_ONES = "one|two|three|four|five|six|seven|eight|nine"
++_NUM = (r"((?:" + "|".join(_TENS) + r")[- ](?:" + _ONES + r")|\d{1,3}|" + "|".join(sorted(_NUMWORDS, key=len, reverse=True)) + r")")
++THRESHOLD_RE = re.compile(_NUM + r"(?:\s+|-)(years?|months?|days?|hours?)\b", re.I)
++_FILLER = r"(?:(?:a|the|of|first|period of|term of)\s+)*$"
++_POST_QUALIFIERS = [("ge", r"^\s*(?:and above|or more|or above|and upwards)"), ("le", r"^\s*(?:or less|and below)")]
++_PRE_QUALIFIERS = [
++    ("ge", r"(?:not less than|at least|minimum of)\s+" + _FILLER),
++    ("le", r"(?:not exceeding|not more than|up to|upto|extend(?:s|ing)? to|at most|maximum of)\s+" + _FILLER),
++    ("gt", r"(?:more than|a longer period than|longer period than|longer than|exceeding|in excess of|greater than|beyond|over|above)\s+" + _FILLER),
++    ("lt", r"(?:less than|a shorter period than|shorter period than|below|under|shorter than)\s+" + _FILLER),
++]
++
++
++def _number_value(raw: str) -> int:
++    return int(raw) if raw.isdigit() else sum(_NUMWORDS[p] for p in re.split(r"[- ]", raw))
++
++
++def thresholds(text: str) -> list[tuple[int, str, str]]:
++    """(value, unit, qualifier) for every duration in the text. Qualifier: 'ge' (and above / not less than),
++    'gt' (more than), 'le' (up to / not exceeding), 'lt' (less than), or '' for a bare number (exactly that)."""
++    t = _norm(text)
++    out = []
++    for m in THRESHOLD_RE.finditer(t):
++        qualifier = ""
++        post, pre = t[m.end(): m.end() + 20], t[max(0, m.start() - 40): m.start()]
++        for name, pattern in _POST_QUALIFIERS:
++            if re.search(pattern, post):
++                qualifier = name
++                break
++        if not qualifier:
++            for name, pattern in _PRE_QUALIFIERS:
++                if re.search(pattern, pre):
++                    qualifier = name
++                    break
++        out.append((_number_value(m.group(1)), m.group(2).rstrip("s"), qualifier))
++    return out
++
++
++# --------------------------------------------------------------------------- the verification pass
++def _issue(kind: str, detail: str = "", **extra) -> dict:
++    return {"type": kind, "detail": detail, **extra}
++
++
++def verify_answer(answer: str, question: str, context: list[dict], n_sources: int | None = None) -> dict:
++    """Check an answer against the chunks the model was given. Pass the RAW answer (before invalid markers are stripped).
++
++    Returns {"refusal", "errors", "warnings", "info", "quotes"}; every issue is a dict with a "type" and a "detail".
++    """
++    n = len(context) if n_sources is None else n_sources
++    errors: list[dict] = []
++    warnings: list[dict] = []
++    info: list[dict] = []
++    refusal = is_refusal(answer)
++
++    cited_numbers = sorted({int(x) for x in CITATION_RE.findall(answer)})
++    for number in cited_numbers:
++        if not 1 <= number <= n:
++            errors.append(_issue("invalid_citation", f"[{number}]"))
++    if refusal and cited_numbers:
++        info.append(_issue("refusal_with_citations", str(cited_numbers)))
++
++    for ref, sentence in _unsupported_references(answer, allowed_sections(question, context)).items():
++        errors.append(_issue("unsupported_section_reference", ref, sentence=sentence))
++
++    quotes = []
++    reported_through_quote: list[str] = []          # a sentence whose problem is already reported via its quotation
++    for q in extract_quotes(answer):
++        result = verify_quote(q["quote"], context)
++        quotes.append({"quote": q["quote"][:120], "cited": q["cited"], **result})
++        entry = {"quote": q["quote"][:120], "cited": q["cited"]}
++        if result["status"] == "verified":
++            if q["cited"] and not set(q["cited"]) & set(result["sources"]):
++                warnings.append(_issue("quote_cited_to_wrong_source", f"found in {result['sources']}, cited {q['cited']}", **entry))
++                reported_through_quote.append(q["quote"])
++        elif result["status"] == "approximate":
++            warnings.append(_issue("quote_not_exact", f"similarity {result['ratio']}", **entry))
++        elif result["status"] == "altered_legal_term":
++            errors.append(_issue("quote_altered_legal_term", f"changed {result['changed']}", **entry))
++        else:
++            errors.append(_issue("quote_not_found", f"best similarity {result['ratio']}", **entry))
++
++    if not refusal and context:
++        chunk_stems = [content_stems(c["text"]) for c in context]
++        all_stems = set().union(*chunk_stems)
++        question_stems = content_stems(question)
++        chunk_thresholds = [thresholds(c["text"]) for c in context]
++        for sentence in sentences(answer):
++            if ABSENCE_RE.search(sentence):
++                continue
++            cited = [int(x) for x in CITATION_RE.findall(sentence) if 1 <= int(x) <= n]
++            words = content_stems(CITATION_RE.sub("", sentence), exclude=question_stems)
++            if len(words) >= 4:
++                ratio_all = len(words & all_stems) / len(words)
++                cited_stems = set().union(*(chunk_stems[i - 1] for i in cited)) if cited else set()
++                ratio_cited = len(words & cited_stems) / len(words) if cited else None
++                if ratio_all < config.SUPPORT_MIN_RATIO:
++                    warnings.append(_issue("weak_support", f"{ratio_all:.2f} of its content words are in the sources",
++                                           sentence=sentence, missing=sorted(words - all_stems)))
++                elif (cited and ratio_cited < config.SUPPORT_MIN_RATIO and ratio_all >= config.MISCITED_ALL_MIN_RATIO
++                      and not any(qt in sentence for qt in reported_through_quote)):
++                    best = max(range(len(context)), key=lambda i: len(words & chunk_stems[i])) + 1
++                    warnings.append(_issue("miscited_claim", f"cited {cited}: {ratio_cited:.2f}; best match [{best}]",
++                                           sentence=sentence, missing=sorted(words - cited_stems)))
++            for value, unit, qualifier in thresholds(CITATION_RE.sub("", sentence)):
++                scope = [chunk_thresholds[i - 1] for i in cited] if cited else chunk_thresholds
++                in_scope = [t for lst in scope for t in lst if t[0] == value and t[1] == unit]
++                anywhere = [t for lst in chunk_thresholds for t in lst if t[0] == value and t[1] == unit]
++                if not anywhere:
++                    warnings.append(_issue("number_not_in_sources", f"{value} {unit}", sentence=sentence))
++                elif qualifier and in_scope and qualifier not in {t[2] for t in in_scope}:
++                    seen = sorted({t[2] or "bare" for t in in_scope})
++                    warnings.append(_issue("threshold_qualifier_mismatch", f"answer '{qualifier}' {value} {unit}; sources {seen}", sentence=sentence))
++    return {"refusal": refusal, "errors": errors, "warnings": warnings, "info": info, "quotes": quotes}
++
++
++# --------------------------------------------------------------------------- notes shown to the user
++_WARNING_PRIORITY = ["quote_cited_to_wrong_source", "quote_not_exact", "threshold_qualifier_mismatch", "number_not_in_sources",
++                     "miscited_claim", "weak_support"]
++MAX_WARNING_NOTES = 3
++
++
++def verification_notes(verification: dict, language: str) -> list[str]:
++    """One note per kind of finding. Confirmed errors come first and say 'Verification error'; warnings say 'Check',
++    are limited to MAX_WARNING_NOTES, and 'weak_support' is summarised once however many sentences it covers."""
++    from rag.language import VERIFICATION_NOTES
++    texts = VERIFICATION_NOTES[language]
++    notes: list[str] = []
++    for kind in dict.fromkeys(i["type"] for i in verification["errors"]):
++        first = next(i for i in verification["errors"] if i["type"] == kind)
++        notes.append(texts[kind].format(detail=first["detail"]))
++    present = {i["type"]: i for i in reversed(verification["warnings"])}      # earliest occurrence wins
++    for kind in _WARNING_PRIORITY:
++        if kind in present and sum(1 for n in notes if n.startswith(("Check", "जाँचें"))) < MAX_WARNING_NOTES:
++            notes.append(texts[kind].format(detail=present[kind]["detail"]))
++    return notes
++
++
++def partial_provision_notes(truncated: list[dict], language: str) -> list[str]:
++    """A deterministic note for each provision the question NAMED but that only partly fitted the context budget,
++    so a list drawn from it is never presented as complete, whatever the model wrote."""
++    from rag.generation import format_parts, provision_label
++    from rag.language import PARTIAL_PROVISION_NOTE
++    return [PARTIAL_PROVISION_NOTE[language].format(parts=format_parts(t["parts_included"]), total=t["parts_total"],
++                                                    label=provision_label(t["provision"]))
++            for t in truncated if t.get("exact")]

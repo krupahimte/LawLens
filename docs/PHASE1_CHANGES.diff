@@ -1,0 +1,303 @@
+--- before/config.py
++++ after/config.py
+@@ -50,3 +50,15 @@
+ # Cosine distance above this means "not relevant enough" (0 = identical).
+ # Calibrated later against real queries; see rag/retrieval.py.
+ MAX_DISTANCE = float(os.getenv("MAX_DISTANCE", "0.65"))
++
++# ---- context assembly (rag/retrieval.py: assemble_context) -------------------
++# How much source text the language model may see, counted in characters (~4 characters per token).
++# 10,000 characters is about 2,500 tokens, which fits easily inside the 8,192-token context window together with
++# the instructions and a 700-token answer.
++CONTEXT_CHAR_BUDGET = int(os.getenv("CONTEXT_CHAR_BUDGET", "10000"))
++EXACT_BUDGET_FRACTION = float(os.getenv("EXACT_BUDGET_FRACTION", "0.6"))    # share of the budget reserved for exact matches
++MAX_PROVISIONS = int(os.getenv("MAX_PROVISIONS", "6"))                      # distinct provisions (was a hard-coded 4)
++MAX_SCHEDULE_CHUNKS = int(os.getenv("MAX_SCHEDULE_CHUNKS", "1"))            # Schedule table chunks per answer
++MIN_PROVISIONS_BEFORE_SCHEDULE = int(os.getenv("MIN_PROVISIONS_BEFORE_SCHEDULE", "3"))
++if not 1_000 <= CONTEXT_CHAR_BUDGET <= 20_000:
++    raise ValueError("CONTEXT_CHAR_BUDGET must be between 1,000 and 20,000 characters (the model window is 8,192 tokens)")
+--- before/main.py
++++ after/main.py
+@@ -61,6 +61,7 @@
+     conversation_id: str
+     standalone_question: str
+     timings: dict[str, float]
++    context_report: dict | None = None      # optional: included/excluded chunks and reasons (answered turns)
+ 
+ 
+ NO_CACHE = {"Cache-Control": "no-cache"}  # always revalidate the app shell so updates show up
+--- before/rag/retrieval.py
++++ after/rag/retrieval.py
+@@ -51,8 +51,10 @@
+     return [d.doc_id for d in catalog.active_documents() if d.doc_id.rsplit("_", 1)[0] == act_key and d.unit != "page"]
+ 
+ 
+-def find_reference(question: str) -> tuple[str, list[str]] | None:
+-    """('103', [doc_ids to look in]) if the question names a specific section/article."""
++def _resolve_reference(question: str) -> tuple[str, list[str], bool] | None:
++    """(number, doc_ids to look in, explicit). ``explicit`` is True when the question names the Act
++    ("section 103 of the BNS") or says "Article" (Constitution); False for a bare "section 302", which is
++    searched across every Act and therefore stays ambiguous."""
+     q = normalize_unicode(question)
+     m = REFERENCE_RE.search(q)
+     if not m:
+@@ -62,15 +64,30 @@
+     lowered = q.lower()
+     for alias, key in _ALIAS_ORDER:
+         if alias in lowered:
+-            return number, _doc_ids_for(key)
++            return number, _doc_ids_for(key), True
+     if is_article:
+-        return number, _doc_ids_for("constitution")
+-    return number, [d.doc_id for d in catalog.active_documents() if d.unit == "section"]
++        return number, _doc_ids_for("constitution"), True
++    return number, [d.doc_id for d in catalog.active_documents() if d.unit == "section"], False
++
++
++def find_reference(question: str) -> tuple[str, list[str]] | None:
++    """('103', [doc_ids to look in]) if the question names a specific section/article."""
++    resolved = _resolve_reference(question)
++    return None if resolved is None else (resolved[0], resolved[1])
++
++
++EXACT_ALL_PARTS_LIMIT = 80   # a provision has at most 13 parts today; this leaves room
++EXACT_PART_ONE_LIMIT = 12    # ambiguous references: first part of the provision in each Act, as before
+ 
+ 
+-def exact_lookup(number: str, doc_ids: list[str]) -> list[dict]:
+-    where = {"$and": [{"section_number": number}, {"doc_id": {"$in": doc_ids}}, {"part": 1}]}
+-    return vectorstore.get_chunks(where, limit=12)
++def exact_lookup(number: str, doc_ids: list[str], all_parts: bool = False) -> list[dict]:
++    """Fetch a provision by number. ``all_parts=True`` returns every chunk of it, in part order;
++    the default keeps the earlier behaviour (part 1 only), which is still used for ambiguous references."""
++    conditions = [{"section_number": number}, {"doc_id": {"$in": doc_ids}}]
++    if not all_parts:
++        conditions.append({"part": 1})
++    chunks = vectorstore.get_chunks({"$and": conditions}, limit=EXACT_ALL_PARTS_LIMIT if all_parts else EXACT_PART_ONE_LIMIT)
++    return sorted(chunks, key=lambda c: (c["doc_id"], int(c["part"])))    # numeric: part 10 comes after part 9
+ 
+ 
+ def retrieve(question: str, top_k: int | None = None) -> Retrieval:
+@@ -78,11 +95,12 @@
+     result = Retrieval(query_language=detect_language(question))
+     seen: set[str] = set()
+ 
+-    ref = find_reference(question)
++    ref = _resolve_reference(question)
+     if ref:
+-        number, doc_ids = ref
++        number, doc_ids, explicit = ref
+         result.exact_reference = number
+-        for hit in exact_lookup(number, doc_ids):
++        # An explicit reference gets every part of the provision; an ambiguous one keeps part 1 per Act.
++        for hit in exact_lookup(number, doc_ids, all_parts=explicit):
+             hit["match"] = "exact"
+             seen.add(hit["chunk_id"])
+             result.hits.append(hit)
+@@ -156,3 +174,158 @@
+         flags["only_unreliable_ocr"] = True
+     flags["unreliable_sources"] = unreliable
+     return context, flags
++
++
++# --------------------------------------------------------------------------- budgeted context (English-only mode)
++def _provision_key(chunk: dict) -> tuple:
++    if chunk["unit"] == "schedule":
++        # Every Schedule chunk is its own candidate: one table chunk must not stand for a whole Schedule.
++        return (chunk["act_name_en"], "schedule", chunk["section_number"], chunk["chunk_id"])
++    return (chunk["act_name_en"], chunk["unit"], chunk["section_number"])
++
++
++def _provision_name(chunk: dict) -> str:
++    return f"{chunk['doc_id']}:{chunk['unit']}:{chunk['section_number']}"
++
++
++def _priority(chunk: dict) -> tuple:
++    """Within one provision: operative text before illustrations, then in part order."""
++    return (chunk.get("chunk_kind") != "operative", int(chunk["part"]))
++
++
++def assemble_context(hits: list[dict], answer_language: str = "en", budget_chars: int | None = None,
++                     max_provisions: int | None = None) -> tuple[list[dict], dict, dict]:
++    """Choose the chunks the language model will see, under a character budget.
++
++    Returns (context_chunks, flags, report). Order of preference:
++      1. EXACT provisions (the question named them): every part, operative before illustrations, up to
++         EXACT_BUDGET_FRACTION of the budget. The first part is always taken if the total budget allows.
++      2. SEMANTIC provisions in rank order: the best-ranked chunk of each, up to MAX_PROVISIONS provisions.
++      3. Other retrieved parts of provisions already included (they were relevant enough to be retrieved).
++      4. SCHEDULE chunks (each its own candidate), at most MAX_SCHEDULE_CHUNKS, and only once
++         MIN_PROVISIONS_BEFORE_SCHEDULE provisions are in (or nothing else was available).
++    Chunks are whole: nothing is ever cut. The only chunk allowed to exceed the budget is the very first one.
++    ``report`` lists every chunk with its reason: included (exact / semantic / extra_part / schedule) or excluded
++    (budget / provision_cap / schedule_limit / low_quality), plus provisions that are only partly shown.
++    Hindi mode keeps the earlier one-chunk-per-provision selection.
++    """
++    if config.ENABLE_HINDI:
++        context, flags = select_context(hits, answer_language)
++        report = {"mode": "legacy", "budget_chars": None, "used_chars": sum(len(c["text"]) for c in context),
++                  "max_provisions": 4, "excluded": [], "truncated_provisions": [],
++                  "included": [{"chunk_id": c["chunk_id"], "provision": _provision_name(c), "reason": "legacy",
++                                "chars": len(c["text"]), "part": int(c["part"]), "parts_total": int(c["parts_total"])} for c in context]}
++        return context, flags, report
++
++    budget = config.CONTEXT_CHAR_BUDGET if budget_chars is None else budget_chars
++    cap = config.MAX_PROVISIONS if max_provisions is None else max_provisions
++    exact_budget = int(budget * config.EXACT_BUDGET_FRACTION)
++    flags: dict = {"used_fallback_language": False, "only_unreliable_ocr": False, "unreliable_sources": []}
++    included: list[tuple[dict, str]] = []
++    excluded: list[tuple[dict, str]] = []
++    used = 0
++
++    def fits(chunk: dict) -> bool:
++        return used == 0 or used + len(chunk["text"]) <= budget      # the very first chunk is always allowed
++
++    def add(chunk: dict, reason: str) -> None:
++        nonlocal used
++        used += len(chunk["text"])
++        included.append((chunk, reason))
++
++    exact_groups: dict[tuple, list[dict]] = {}
++    semantic_groups: dict[tuple, list[dict]] = {}
++    for hit in hits:
++        if hit["low_quality"]:
++            flags["unreliable_sources"].append(hit)
++            excluded.append((hit, "low_quality"))
++            continue
++        target = exact_groups if hit.get("match") == "exact" else semantic_groups
++        target.setdefault(_provision_key(hit), []).append(hit)
++    for key in [k for k in semantic_groups if k in exact_groups]:    # later parts of an exact provision found by search
++        exact_groups[key].extend(semantic_groups.pop(key))
++
++    chosen: dict[tuple, list[dict]] = {}                             # provision -> chunks taken (insertion order = priority)
++
++    # 1. exact provisions
++    exact_used = 0
++    for key, chunks in exact_groups.items():
++        ordered = sorted(chunks, key=_priority)
++        if len(chosen) >= cap:
++            excluded.extend((c, "provision_cap") for c in ordered)
++            continue
++        for chunk in ordered:
++            size = len(chunk["text"])
++            first_of_provision = key not in chosen
++            if fits(chunk) and (first_of_provision or exact_used + size <= exact_budget):
++                add(chunk, "exact")
++                exact_used += size
++                chosen.setdefault(key, []).append(chunk)
++            else:
++                excluded.append((chunk, "budget"))
++
++    # 2. best chunk of each semantic provision, in rank order
++    non_schedule = [(k, v) for k, v in semantic_groups.items() if k[1] != "schedule"]
++    schedule = [(k, v) for k, v in semantic_groups.items() if k[1] == "schedule"]
++    for key, chunks in non_schedule:
++        if len(chosen) >= cap:
++            excluded.extend((c, "provision_cap") for c in chunks)
++        elif fits(chunks[0]):
++            add(chunks[0], "semantic")
++            chosen[key] = [chunks[0]]
++        else:
++            excluded.extend((c, "budget") for c in chunks)
++
++    # 3. other retrieved parts of the provisions already included
++    for key, chunks in non_schedule:
++        if key in chosen:
++            for chunk in sorted(chunks[1:], key=_priority):
++                if fits(chunk):
++                    add(chunk, "extra_part")
++                    chosen[key].append(chunk)
++                else:
++                    excluded.append((chunk, "budget"))
++
++    # 4. Schedule chunks: few, and late
++    available = len(exact_groups) + len(non_schedule)
++    eligible = len(chosen) >= config.MIN_PROVISIONS_BEFORE_SCHEDULE or available < config.MIN_PROVISIONS_BEFORE_SCHEDULE
++    taken = 0
++    for key, chunks in schedule:
++        chunk = chunks[0]
++        if len(chosen) >= cap:
++            excluded.append((chunk, "provision_cap"))
++        elif not eligible or taken >= config.MAX_SCHEDULE_CHUNKS:
++            excluded.append((chunk, "schedule_limit"))
++        elif fits(chunk):
++            add(chunk, "schedule")
++            chosen[key] = [chunk]
++            taken += 1
++        else:
++            excluded.append((chunk, "budget"))
++
++    # what the model will see: provisions in priority order, each in part order
++    reason_of = {c["chunk_id"]: r for c, r in included}
++    context: list[dict] = []
++    included_entries: list[dict] = []
++    truncated: list[dict] = []
++    for key, chunks in chosen.items():
++        ordered = sorted(chunks, key=lambda c: int(c["part"]))
++        for chunk in ordered:
++            context.append(chunk)
++            included_entries.append({"chunk_id": chunk["chunk_id"], "provision": _provision_name(chunk),
++                                     "reason": reason_of[chunk["chunk_id"]], "chars": len(chunk["text"]),
++                                     "part": int(chunk["part"]), "parts_total": int(chunk["parts_total"])})
++        parts_total = max(int(c["parts_total"]) for c in ordered)
++        if key[1] != "schedule" and len(ordered) < parts_total:
++            truncated.append({"provision": _provision_name(ordered[0]), "parts_included": [int(c["part"]) for c in ordered],
++                              "parts_total": parts_total, "exact": key in exact_groups})
++    if not context and flags["unreliable_sources"]:
++        flags["only_unreliable_ocr"] = True
++    report = {
++        "mode": "budget", "budget_chars": budget, "used_chars": used, "max_provisions": cap,
++        "included": included_entries,
++        "excluded": [{"chunk_id": c["chunk_id"], "provision": _provision_name(c), "reason": r, "chars": len(c["text"]),
++                      "part": int(c["part"]), "parts_total": int(c["parts_total"])} for c, r in excluded],
++        "truncated_provisions": truncated,
++    }
++    return context, flags, report
+--- before/rag/pipeline.py
++++ after/rag/pipeline.py
+@@ -63,11 +63,12 @@
+ 
+ 
+ def _final(status: str, answer: str, language: str, sources: list[dict], notes: list[str],
+-           conversation_id: str | None, timings: dict, standalone: str) -> dict:
++           conversation_id: str | None, timings: dict, standalone: str, context_report: dict | None = None) -> dict:
+     return {
+         "type": "final", "status": status, "answer": answer, "language": language,
+         "sources": sources, "notes": notes, "disclaimer": DISCLAIMER[language],
+         "conversation_id": conversation_id, "standalone_question": standalone, "timings": timings,
++        "context_report": context_report,   # which chunks the model saw / did not see, and why (answered turns only)
+     }
+ 
+ 
+@@ -107,7 +108,7 @@
+         yield _final("insufficient", message, answer_lang, [], [], conversation_id, timings, standalone)
+         return
+ 
+-    context, flags = retrieval.select_context(relevant_hits, answer_lang)
++    context, flags, context_report = retrieval.assemble_context(relevant_hits, answer_lang)
+     if not context:  # relevant provisions exist, but only as unreadable OCR text
+         pointers = [make_source(i, c) for i, c in enumerate(flags["unreliable_sources"][:3], start=1)]
+         message = OCR_LIMITATION[answer_lang]
+@@ -141,7 +142,7 @@
+     timings["total_s"] = round(time.time() - started, 2)
+     conversation.add_message(conversation_id, "user", question)
+     conversation.add_message(conversation_id, "assistant", answer)
+-    yield _final("answered", answer, answer_lang, sources, notes, conversation_id, timings, standalone)
++    yield _final("answered", answer, answer_lang, sources, notes, conversation_id, timings, standalone, context_report)
+ 
+ 
+ def answer(question: str, language: str = "auto", conversation_id: str | None = None) -> dict:
+--- before/.env.example
++++ after/.env.example
+@@ -4,6 +4,11 @@
+ CHAT_MODEL=qwen3:4b-instruct-2507-q4_K_M
+ TOP_K=6
+ MAX_DISTANCE=0.65
++CONTEXT_CHAR_BUDGET=10000
++EXACT_BUDGET_FRACTION=0.6
++MAX_PROVISIONS=6
++MAX_SCHEDULE_CHUNKS=1
++MIN_PROVISIONS_BEFORE_SCHEDULE=3
+ MAX_CHUNK_CHARS=2000
+ CHUNK_OVERLAP_CHARS=200
+ OCR_WORKERS=4
