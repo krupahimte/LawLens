@@ -4,50 +4,76 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content">
 <title>Indian Law Assistant</title>
-<meta name="description" content="Assistant for Indian law (English) with citations to the original documents.">
-<meta name="theme-color" content="#f4f1ea" media="(prefers-color-scheme: light)">
-<meta name="theme-color" content="#14181f" media="(prefers-color-scheme: dark)">
+<meta name="description" content="Explore Indian legislation and get answers grounded in the original legal documents, with citations you can open.">
+<meta name="theme-color" content="#F5F0E6">
+<meta name="color-scheme" content="light">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="apple-mobile-web-app-title" content="Law Assistant">
+<meta name="format-detection" content="telephone=no">
 <link rel="manifest" href="/manifest.webmanifest">
 <link rel="icon" href="/static/icons/icon-192.png" type="image/png">
-<link rel="apple-touch-icon" href="/static/icons/icon-192.png">
+<link rel="apple-touch-icon" href="/static/icons/apple-touch-icon.png">
+<link rel="preload" href="/static/fonts/inter.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="/static/fonts/playfair-display.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="stylesheet" href="/static/app.css">
 </head>
 <body>
+<a class="skip" href="#q">Skip to question box</a>
 <div class="app" id="app">
 
-  <!-- History drawer (off-canvas on phones, permanent sidebar on desktop) -->
+  <!-- Navigation: permanent (collapsible) sidebar on desktop, slide-out drawer on phones and tablets -->
   <div class="scrim" id="scrim" hidden></div>
-  <aside class="drawer" id="drawer" aria-label="Chat history" tabindex="-1">
+  <aside class="drawer" id="drawer" aria-label="Navigation" tabindex="-1">
     <div class="drawer-head">
-      <strong id="t-history">Chats</strong>
+      <a class="logo" href="/" aria-label="Indian Law Assistant home">
+        <svg class="logo-mark" viewBox="0 0 32 32" aria-hidden="true"><path d="M5 29V14a11 11 0 0122 0v15z" class="lm-arch"/><path d="M9 29V14a7 7 0 0114 0v15" class="lm-in"/><path d="M16 15l3.2 3.6L16 22.2l-3.2-3.6z" class="lm-dia"/></svg>
+        <span class="logo-text"><span class="logo-name" id="t-title">Law Assistant</span><span class="logo-sub" id="t-sub">Indian law · English</span></span>
+      </a>
       <button class="icon-btn only-mobile" id="close-drawer" type="button" aria-label="Close">
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>
       </button>
+      <button class="icon-btn only-desktop" id="collapse" type="button" aria-label="Collapse sidebar" aria-expanded="true" aria-controls="drawer">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="4.5" width="17" height="15" rx="2"/><path d="M9.5 4.5v15"/></svg>
+      </button>
     </div>
+
     <button class="btn primary wide" id="new-chat-drawer" type="button">
       <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg><span id="t-new">New chat</span>
     </button>
-    <nav class="history" id="history" aria-label="Previous chats"></nav>
-    <button class="link-btn" id="open-about-drawer" type="button"><span id="t-about">About &amp; disclaimer</span></button>
-  </aside>
 
-  <div class="main">
-    <header class="topbar">
-      <button class="icon-btn only-mobile" id="open-drawer" type="button" aria-label="Open chat history" aria-expanded="false" aria-controls="drawer">
-        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
-      </button>
-      <div class="brand">
-        <span class="brand-title" id="t-title">Law Assistant</span>
-        <span class="brand-sub" id="t-sub">Indian law · हिंदी / English</span>
-      </div>
+    <div class="side-scroll">
+      <details class="side-group" id="explore">
+        <summary><span class="side-label"><span class="no">01</span><span id="t-explore">Explore legislation</span></span><svg class="chev" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg></summary>
+        <ul class="acts" id="acts"></ul>
+      </details>
+
+      <section class="side-group open" aria-labelledby="t-history">
+        <h2 class="side-label"><span class="no">02</span><span id="t-history">Chats</span></h2>
+        <nav class="history" id="history" aria-label="Previous chats"></nav>
+      </section>
+    </div>
+
+    <div class="drawer-foot">
       <div class="seg" id="lang" role="radiogroup" aria-label="Answer language">
         <button type="button" role="radio" aria-checked="true" data-lang="auto">Auto</button>
         <button type="button" role="radio" aria-checked="false" data-lang="en">EN</button>
         <button type="button" role="radio" aria-checked="false" data-lang="hi" lang="hi">हिं</button>
       </div>
+      <button class="side-link" id="open-about-drawer" type="button">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M12 3v3M12 18v3M3 12h3M18 12h3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M18.4 5.6l-2.1 2.1M7.7 16.3l-2.1 2.1"/></svg>
+        <span id="t-about">About &amp; settings</span>
+      </button>
+    </div>
+  </aside>
+
+  <div class="main" id="main">
+    <header class="topbar">
+      <button class="icon-btn" id="open-drawer" type="button" aria-label="Open menu" aria-expanded="false" aria-controls="drawer">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h10"/></svg>
+      </button>
+      <span class="topbar-brand" aria-hidden="true">Law Assistant</span>
       <button class="icon-btn" id="new-chat" type="button" aria-label="New chat">
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20h9M16.5 3.5a2.1 2.1 0 013 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
       </button>
@@ -60,19 +86,38 @@
 
     <main class="messages" id="messages" role="log" aria-live="polite" aria-relevant="additions" aria-label="Conversation" tabindex="-1">
       <section class="welcome" id="welcome">
-        <img class="welcome-icon" src="/static/icons/icon-192.png" width="72" height="72" alt="">
-        <h1 id="t-welcome-h">Ask about Indian law</h1>
-        <p id="t-welcome-p">Answers come from the Constitution, BNS, BNSS, BSA, the IT Act 2000 and the Consumer Protection Act 2019, with citations you can open.</p>
-        <div class="chips" id="examples"></div>
+        <svg class="welcome-mark" viewBox="0 0 120 64" aria-hidden="true">
+          <defs><pattern id="jaali" width="12" height="12" patternUnits="userSpaceOnUse"><path d="M6 0l6 6-6 6-6-6z" class="jl"/><circle cx="6" cy="6" r="1" class="jd"/></pattern></defs>
+          <path d="M20 64V32a40 40 0 0180 0v32z" fill="url(#jaali)" class="arch-fill"/>
+          <path d="M20 64V32a40 40 0 0180 0v32" class="arch-line"/>
+          <path d="M30 64V34a30 30 0 0160 0v30" class="arch-line thin"/>
+        </svg>
+        <p class="eyebrow" id="t-eyebrow">Indian legal research</p>
+        <h1 id="t-welcome-h">Indian law, made understandable.</h1>
+        <p class="lede" id="t-welcome-p">Explore Indian legislation, understand your rights and get answers grounded in legal documents.</p>
+
+        <div class="composer-slot" id="composer-slot"></div>
+
+        <div class="home-extra">
+          <h2 class="rule-title"><span class="no">A</span><span id="t-try">Try asking</span></h2>
+          <div class="chips" id="examples"></div>
+          <h2 class="rule-title"><span class="no">B</span><span id="t-topics">Popular topics</span></h2>
+          <div class="topics" id="topics"></div>
+          <div id="recent-wrap" hidden>
+            <h2 class="rule-title"><span class="no">C</span><span id="t-recent">Recently explored</span></h2>
+            <div class="recent" id="recent"></div>
+          </div>
+        </div>
       </section>
     </main>
 
     <form class="composer" id="form" autocomplete="off">
       <div class="composer-row">
-        <textarea id="q" rows="1" maxlength="1000" enterkeyhint="send" aria-label="Your question"
+        <label class="sr-only" for="q" id="t-qlabel">Your question</label>
+        <textarea id="q" rows="1" maxlength="1000" enterkeyhint="send"
                   placeholder="Ask your question…" required></textarea>
         <button class="send" id="send" type="submit" aria-label="Send">
-          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12l14-7-5 14-2.5-5.5L5 12z"/></svg>
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 19V5M5 12l7-7 7 7"/></svg>
         </button>
         <button class="send stop" id="stop" type="button" aria-label="Stop" hidden>
           <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="7" y="7" width="10" height="10" rx="2"/></svg>
@@ -84,6 +129,20 @@
       </p>
     </form>
   </div>
+
+  <!-- Source inspector: right-hand panel on wide screens, bottom sheet on phones, side drawer on tablets -->
+  <div class="scrim panel-scrim" id="panel-scrim" hidden></div>
+  <aside class="panel" id="panel" aria-labelledby="panel-title" tabindex="-1">
+    <div class="sheet-grab" aria-hidden="true"></div>
+    <div class="panel-head">
+      <h2 id="panel-title">Sources</h2>
+      <button class="icon-btn" id="close-panel" type="button" aria-label="Close sources">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>
+      </button>
+    </div>
+    <p class="panel-hint" id="panel-hint"></p>
+    <div class="panel-body" id="panel-body"></div>
+  </aside>
 
   <!-- Disclaimer / about sheet: a native dialog, so it never navigates away from the chat -->
   <dialog class="sheet" id="about" aria-labelledby="about-title">

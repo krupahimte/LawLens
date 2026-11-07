@@ -161,6 +161,8 @@ Automated checks passing does **not** mean the answers are legally accurate.
   PDF character for character, and the verbatim check can fail on those pages.
 * **Retrieval gaps.** Some questions use vocabulary the index does not connect (for example "anticipatory bail" -> BNSS 482), and then the
   answer may be a refusal or off-target.
+* **Broad questions and similar Act names.** "Overview of an Act" questions are answered from only a few sections, and the model can mix up the
+  BNS and the BNSS (it once abbreviated the BNSS as "BNS"). Always check the Act named on each source card.
 * **Latency.** Typical total time was about 1 minute (median 62 s in the last live run, up to about 150 s) on a CPU-only laptop.
 * **Scope.** English only; six texts only; not updated for amendments after the PDFs; no legal advice.
 * **Privacy / data.** Questions are processed locally. The server keeps a chat log in `data/conversations.sqlite3`; browser chat history is in

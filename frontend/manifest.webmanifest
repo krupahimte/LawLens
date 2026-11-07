@@ -1,19 +1,20 @@
 {
   "name": "Indian Law Assistant",
   "short_name": "Law Assistant",
-  "description": "Bilingual (Hindi/English) assistant for Indian law, with citations to the original documents.",
+  "description": "Explore Indian legislation and get answers grounded in the original legal documents, with citations.",
+  "id": "/",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",
-  "orientation": "portrait-primary",
-  "background_color": "#183458",
-  "theme_color": "#183458",
+  "orientation": "any",
+  "background_color": "#F5F0E6",
+  "theme_color": "#F5F0E6",
   "lang": "en",
   "categories": ["education", "reference"],
   "icons": [
     { "src": "/static/icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
     { "src": "/static/icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
-    { "src": "/static/icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "maskable" },
-    { "src": "/static/icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+    { "src": "/static/icons/maskable-192.png", "sizes": "192x192", "type": "image/png", "purpose": "maskable" },
+    { "src": "/static/icons/maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
   ]
 }

@@ -6,8 +6,11 @@
 /* ------------------------------------------------------------------ i18n */
 const T = {
   en: {
-    title: "Law Assistant", sub: "Indian law · हिंदी / English", history: "Chats", new: "New chat", about: "About & disclaimer",
-    welcomeH: "Ask about Indian law", welcomeP: "Answers come from the Constitution, BNS, BNSS, BSA, the IT Act 2000 and the Consumer Protection Act 2019, with citations you can open.",
+    title: "Law Assistant", sub: "Indian law · हिंदी / English", history: "Chats", new: "New chat", about: "About & settings",
+    welcomeH: "Indian law, made understandable.", welcomeP: "Explore Indian legislation, understand your rights and get answers grounded in legal documents.",
+    eyebrow: "Indian legal research", tryAsking: "Try asking", topics: "Popular topics", recent: "Recently explored", explore: "Explore legislation", qlabel: "Your question",
+    viewSources: "View sources", panelTitle: "Sources", panelHint: "Retrieved from the original documents", collapse: "Collapse sidebar", expand: "Expand sidebar", openMenu: "Open menu", closePanel: "Close sources",
+    overviewOf: "Give me an overview of",
     placeholder: "Ask your question…", foot: "Legal information, not legal advice.", details: "Details",
     searching: "Searching the law", writing: "Writing the answer", copy: "Copy", copied: "Copied", retry: "Try again",
     sources: "Sources", open: "Open original PDF page", page: "Page", ocr: "OCR", exact: "Exact section match",
@@ -26,8 +29,11 @@ const T = {
     ],
   },
   hi: {
-    title: "विधि सहायक", sub: "भारतीय कानून · हिंदी / English", history: "चैट", new: "नई चैट", about: "परिचय व अस्वीकरण",
-    welcomeH: "भारतीय कानून के बारे में पूछें", welcomeP: "उत्तर भारत का संविधान, BNS, BNSS, BSA, आईटी अधिनियम 2000 और उपभोक्ता संरक्षण अधिनियम 2019 पर आधारित हैं, खोले जा सकने वाले संदर्भों के साथ।",
+    title: "विधि सहायक", sub: "भारतीय कानून · हिंदी / English", history: "चैट", new: "नई चैट", about: "परिचय व सेटिंग",
+    welcomeH: "भारतीय कानून, सरल भाषा में।", welcomeP: "भारतीय कानूनों को जानें, अपने अधिकार समझें और कानूनी दस्तावेज़ों पर आधारित उत्तर पाएँ।",
+    eyebrow: "भारतीय विधि शोध", tryAsking: "ये पूछ कर देखें", topics: "लोकप्रिय विषय", recent: "हाल की चैट", explore: "कानून देखें", qlabel: "आपका प्रश्न",
+    viewSources: "स्रोत देखें", panelTitle: "स्रोत", panelHint: "मूल दस्तावेज़ों से प्राप्त", collapse: "साइडबार छोटा करें", expand: "साइडबार खोलें", openMenu: "मेनू खोलें", closePanel: "स्रोत बंद करें",
+    overviewOf: "मुझे संक्षेप में बताइए:",
     placeholder: "अपना प्रश्न लिखें…", foot: "कानूनी जानकारी, कानूनी सलाह नहीं।", details: "विवरण",
     searching: "कानून खोजा जा रहा है", writing: "उत्तर लिखा जा रहा है", copy: "कॉपी", copied: "कॉपी हो गया", retry: "फिर कोशिश करें",
     sources: "स्रोत", open: "मूल PDF पृष्ठ खोलें", page: "पृष्ठ", ocr: "OCR", exact: "सटीक धारा मिलान",
@@ -47,9 +53,18 @@ const T = {
   },
 };
 const EXAMPLES = {
-  en: ["What is the punishment for theft?", "चोरी की सजा क्या है?", "What does Article 21 say?", "How do I file a consumer complaint for a defective product?"],
-  hi: ["चोरी की सजा क्या है?", "What is the punishment for theft?", "अनुच्छेद 21 क्या कहता है?", "दोषपूर्ण वस्तु के लिए उपभोक्ता शिकायत कैसे दर्ज करें?"],
+  en: ["What are my fundamental rights under the Constitution?", "Explain Section 103 of BNS.", "What is the difference between BNS and IPC?", "What are my rights if I am arrested?"],
+  hi: ["संविधान के तहत मेरे मौलिक अधिकार क्या हैं?", "BNS की धारा 103 समझाइए।", "BNS और IPC में क्या अंतर है?", "गिरफ्तार होने पर मेरे क्या अधिकार हैं?"],
 };
+/* Topic chips are plain prompts that run the normal RAG query; they are not data or statistics. */
+const TOPICS = {
+  en: [["Fundamental rights", "What are the fundamental rights in the Constitution of India?"], ["Arrest and bail", "What are the rules on arrest and bail?"], ["Consumer complaints", "How do I file a consumer complaint for a defective product?"],
+       ["Cyber offences", "What offences does the IT Act 2000 cover?"], ["Theft and robbery", "What is the punishment for theft?"], ["Evidence", "What counts as evidence under the Bharatiya Sakshya Adhiniyam?"]],
+  hi: [["मौलिक अधिकार", "भारत के संविधान में मौलिक अधिकार क्या हैं?"], ["गिरफ्तारी और जमानत", "गिरफ्तारी और जमानत के नियम क्या हैं?"], ["उपभोक्ता शिकायत", "दोषपूर्ण वस्तु के लिए उपभोक्ता शिकायत कैसे दर्ज करें?"],
+       ["साइबर अपराध", "आईटी अधिनियम 2000 में कौन से अपराध आते हैं?"], ["चोरी", "चोरी की सजा क्या है?"], ["साक्ष्य", "भारतीय साक्ष्य अधिनियम के तहत क्या साक्ष्य माना जाता है?"]],
+};
+const ACTS = [["Constitution of India", "COI", "the Constitution of India"], ["Bharatiya Nyaya Sanhita, 2023", "BNS", "the Bharatiya Nyaya Sanhita, 2023"], ["Bharatiya Nagarik Suraksha Sanhita, 2023", "BNSS", "the Bharatiya Nagarik Suraksha Sanhita, 2023"],
+              ["Bharatiya Sakshya Adhiniyam, 2023", "BSA", "the Bharatiya Sakshya Adhiniyam, 2023"], ["Information Technology Act, 2000", "IT", "the Information Technology Act, 2000"], ["Consumer Protection Act, 2019", "CPA", "the Consumer Protection Act, 2019"]];
 
 /* ------------------------------------------------------------------ state */
 const $ = id => document.getElementById(id);
@@ -116,17 +131,28 @@ function applyI18n() {
   const l = uiLang(), s = T[l];
   document.documentElement.lang = l;
   $("t-title").textContent = s.title; $("t-sub").textContent = HINDI ? s.sub : "Indian law · English";
+  $("t-explore").textContent = s.explore; $("t-eyebrow").textContent = s.eyebrow; $("t-try").textContent = s.tryAsking; $("t-topics").textContent = s.topics; $("t-recent").textContent = s.recent;
+  $("t-qlabel").textContent = s.qlabel; $("panel-title").textContent = s.panelTitle; $("panel-hint").textContent = s.panelHint; $("close-panel").setAttribute("aria-label", s.closePanel);
+  syncCollapseLabels();
   $("lang").hidden = !HINDI;
   $("t-history").textContent = s.history; $("t-new").textContent = s.new; $("t-about").textContent = s.about;
   $("t-welcome-h").textContent = s.welcomeH; $("t-welcome-p").textContent = s.welcomeP;
   $("t-foot").textContent = s.foot; $("t-details").textContent = s.details;
   $("q").placeholder = s.placeholder; $("offline").textContent = s.offline;
   $("new-chat").setAttribute("aria-label", s.newChat); $("open-about").setAttribute("aria-label", s.about);
-  $("open-drawer").setAttribute("aria-label", s.openHistory); $("close-drawer").setAttribute("aria-label", s.close);
+  $("close-drawer").setAttribute("aria-label", s.close);
   $("about-title").textContent = s.aboutTitle; $("close-about").textContent = s.close; $("install").textContent = s.install;
   $("send").setAttribute("aria-label", l === "hi" ? "भेजें" : "Send"); $("stop").setAttribute("aria-label", l === "hi" ? "रोकें" : "Stop");
   const body = $("about-body"); body.textContent = "";
   aboutSections(l).forEach(([h, ps]) => { body.appendChild(el("h3", null, h)); ps.forEach(p => body.appendChild(el("p", null, p))); });
+  const tp = $("topics"); tp.textContent = "";
+  TOPICS[l].forEach(([label, q]) => { const b = el("button", "topic", label); b.type = "button"; b.onclick = () => ask(q); tp.appendChild(b); });
+  const acts = $("acts"); acts.textContent = "";
+  ACTS.forEach(([name, abbr, phrase]) => {
+    const li = el("li"), b = el("button"); b.type = "button"; b.append(el("span", null, name), el("span", "abbr", abbr));
+    b.onclick = () => { closeDrawerIfOpen(); ask(l === "hi" ? `${s.overviewOf} ${name}` : `${s.overviewOf} ${phrase}.`); }; li.appendChild(b); acts.appendChild(li);
+  });
+  renderRecent();
   const ex = $("examples"); ex.textContent = "";
   EXAMPLES[l].filter(q => HINDI || !/[ऀ-ॿ]/.test(q)).forEach(q => { const b = el("button", "chip", q); b.type = "button"; b.onclick = () => ask(q); ex.appendChild(b); });
   document.querySelectorAll("#lang button").forEach(b => b.setAttribute("aria-checked", String(b.dataset.lang === state.lang)));
@@ -146,11 +172,15 @@ function inline(parent, text, onCite) {
 }
 function renderMarkdown(container, text, onCite) {
   container.textContent = "";
-  let list = null, para = null;
-  const flush = () => { list = null; para = null; };
+  let list = null, para = null, quote = null;
+  const flush = () => { list = null; para = null; quote = null; };
   text.split("\n").forEach(raw => {
     const line = raw.trimEnd(), li = line.match(/^\s*(?:[-*•]|\d+[.)])\s+(.*)$/);
     if (!line.trim()) { flush(); return; }
+    const hd = line.match(/^(#{1,4})\s+(.*)$/), bq = line.match(/^>\s?(.*)$/);
+    if (hd) { flush(); const h = el(hd[1].length <= 2 ? "h3" : "h4"); inline(h, hd[2], onCite); container.appendChild(h); return; }
+    if (bq) { list = null; para = null; if (!quote) { quote = el("blockquote"); container.appendChild(quote); quote.appendChild(el("p")); } else quote.firstChild.appendChild(document.createElement("br")); inline(quote.firstChild, bq[1], onCite); return; }
+    quote = null;
     if (li) {
       if (!list) { list = el(/^\s*\d/.test(line) ? "ol" : "ul"); container.appendChild(list); }
       const item = el("li"); inline(item, li[1], onCite); list.appendChild(item); para = null;
@@ -166,8 +196,8 @@ function renderMarkdown(container, text, onCite) {
 function ocrClass(s) { return s.low_quality || s.ocr_conf < 80 ? "bad" : s.ocr_conf < 90 ? "warn" : "ok"; }
 function tag(text, cls) { return el("span", "tag" + (cls ? " " + cls : ""), text); }
 
-function buildCard(s, idx) {
-  const d = el("details", "card"); d.id = `c-${idx}-${s.n}`;
+function buildCard(s, idx, prefix = "c") {
+  const d = el("details", "card"); d.id = `${prefix}-${idx}-${s.n}`;
   const sum = el("summary");
   sum.appendChild(el("span", "num", String(s.n)));
   const main = el("div", "card-main");
@@ -221,7 +251,7 @@ function fillBot(bubble, msg, idx) {
     return;
   }
   if (msg.status && msg.status !== "answered" && msg.status !== "greeting") bubble.classList.add("info");
-  const md = el("div", "md"); renderMarkdown(md, msg.text, n => openCard(idx, n));
+  const md = el("div", "md"); renderMarkdown(md, msg.text, n => openPanel(idx, n));
   if (msg.pending) md.classList.add("caret");
   bubble.appendChild(md);
   if (msg.pending) return;
@@ -238,6 +268,9 @@ function fillBot(bubble, msg, idx) {
   if (msg.status === "answered") {
     const tools = el("div", "tools"), c = el("button", "tool", t("copy")); c.type = "button";
     c.onclick = async () => { try { await navigator.clipboard.writeText(plainText(msg)); toast(t("copied")); } catch (e) { toast("—"); } };
+    if (msg.sources && msg.sources.length) {
+      const v = el("button", "tool strong", `${t("viewSources")} (${msg.sources.length})`); v.type = "button"; v.onclick = () => openPanel(idx); tools.appendChild(v);
+    }
     tools.appendChild(c); bubble.appendChild(tools);
   }
   if (msg.disclaimer) bubble.appendChild(el("div", "disc", msg.disclaimer));
@@ -253,6 +286,7 @@ function renderMessages() {
   const box = $("messages"), chat = activeChat();
   box.querySelectorAll(".row").forEach(r => r.remove());
   $("welcome").hidden = !!(chat && chat.messages.length);
+  syncHome(); closePanel();
   (chat ? chat.messages : []).forEach((m, i) => box.appendChild(renderRow(m, i)));
   scrollBottom(true);
 }
@@ -276,7 +310,48 @@ function renderHistory() {
     item.append(open, del); h.appendChild(item);
   });
 }
-const wide = () => matchMedia("(min-width: 900px)").matches;
+const wide = () => matchMedia("(min-width: 1100px)").matches;
+function renderRecent() {
+  const box = $("recent"), items = [...state.chats].sort((a, b) => b.updated - a.updated).slice(0, 3);
+  box.textContent = ""; $("recent-wrap").hidden = !items.length;
+  items.forEach(c => {
+    const b = el("button"); b.type = "button"; b.append(el("span", "r-title", c.title), el("span", "r-date", dateLabel(c.updated)));
+    b.onclick = () => switchChat(c.id); box.appendChild(b);
+  });
+}
+/* Home state: on desktop the question box sits under the headline; on phones it stays pinned to the bottom. */
+function syncHome() {
+  const home = !$("welcome").hidden, form = $("form"), slot = $("composer-slot"), main = $("main");
+  main.classList.toggle("home", home);
+  const target = home && matchMedia("(min-width: 1100px)").matches ? slot : main;
+  if (form.parentNode !== target) { target.appendChild(form); if (target === slot && !matchMedia("(pointer: coarse)").matches) form.querySelector("textarea").focus({ preventScroll: true }); }
+}
+/* Source panel: a docked column on wide screens, otherwise a side drawer / bottom sheet */
+let panelOpener = null;
+function openPanel(idx, n) {
+  const chat = activeChat(), msg = chat && chat.messages[idx]; if (!msg || !msg.sources || !msg.sources.length) return;
+  const body = $("panel-body"); body.textContent = "";
+  msg.sources.forEach(s => body.appendChild(buildCard(s, idx, "p")));
+  const panel = $("panel"); if (!panel.classList.contains("open")) panelOpener = document.activeElement;
+  panel.classList.add("open"); if (!matchMedia("(min-width: 1280px)").matches) $("panel-scrim").hidden = false;
+  const target = (n != null && document.getElementById(`p-${idx}-${n}`)) || body.querySelector("details.card");
+  if (target) { target.open = true; if (n != null) { target.classList.add("flash"); setTimeout(() => target.classList.remove("flash"), 1400); } setTimeout(() => target.scrollIntoView({ block: "nearest", behavior: "smooth" }), 280); }
+  panel.focus({ preventScroll: true });
+}
+function closePanel() {
+  if (!$("panel").classList.contains("open")) return;
+  $("panel").classList.remove("open"); $("panel-scrim").hidden = true;
+  if (panelOpener && document.contains(panelOpener)) panelOpener.focus({ preventScroll: true }); panelOpener = null;
+}
+function syncCollapseLabels() {
+  const c = $("app").classList.contains("collapsed"), s = T[uiLang()];
+  $("collapse").setAttribute("aria-label", s.collapse); $("collapse").setAttribute("aria-expanded", String(!c));
+  $("open-drawer").setAttribute("aria-label", s.openMenu);
+}
+function setCollapsed(on) {
+  $("app").classList.toggle("collapsed", on); try { localStorage.setItem("ila.side", on ? "0" : "1"); } catch (e) {}
+  syncCollapseLabels(); if (on) $("open-drawer").focus(); else $("collapse").focus();
+}
 function openDrawer() {
   $("drawer").classList.add("open"); $("scrim").hidden = false; $("open-drawer").setAttribute("aria-expanded", "true");
   document.querySelector(".main").inert = true; $("drawer").focus();
@@ -320,7 +395,7 @@ async function ask(question) {
   chat.messages.push({ role: "user", text: question });
   const msg = { role: "assistant", text: "", pending: true, stage: "searching" };
   chat.messages.push(msg); chat.updated = Date.now();
-  $("welcome").hidden = true;
+  $("welcome").hidden = true; syncHome();
   const idx = chat.messages.length - 1, box = $("messages");
   const row = renderRow(msg, idx), userRow = renderRow(chat.messages[idx - 1], idx - 1);
   box.append(userRow, row); scrollBottom(true);
@@ -367,7 +442,11 @@ async function ask(question) {
 function closeDrawerIfOpen() { if ($("drawer").classList.contains("open")) closeDrawer(); }
 
 /* ------------------------------------------------------------------ composer, viewport, events */
-function autosize() { const q = $("q"); q.style.height = "auto"; q.style.height = Math.min(q.scrollHeight, 132) + "px"; }
+function autosize() {
+  const q = $("q"); q.style.height = "auto";
+  const h = q.scrollHeight + (q.offsetHeight - q.clientHeight);   // border-box: scrollHeight excludes the border
+  q.style.height = Math.min(h, 132) + "px"; q.style.overflowY = h > 132 ? "auto" : "hidden";
+}
 
 function fitViewport() {  // keeps the composer above the on-screen keyboard (esp. iOS Safari and older Android)
   const vv = window.visualViewport; if (!vv) return;
@@ -393,8 +472,15 @@ async function init() {
     state.lang = b.dataset.lang; save(); applyI18n(); renderMessages(); renderHistory();
   }));
   $("new-chat").onclick = $("new-chat-drawer").onclick = () => { newChat(); closeDrawerIfOpen(); };
-  $("open-drawer").onclick = openDrawer; $("close-drawer").onclick = closeDrawer; $("scrim").onclick = closeDrawer;
-  document.addEventListener("keydown", e => { if (e.key === "Escape" && $("drawer").classList.contains("open")) closeDrawer(); });
+  $("open-drawer").onclick = () => wide() ? setCollapsed(false) : openDrawer();
+  $("close-drawer").onclick = closeDrawer; $("scrim").onclick = closeDrawer; $("collapse").onclick = () => setCollapsed(true);
+  $("close-panel").onclick = closePanel; $("panel-scrim").onclick = closePanel;
+  try { if (localStorage.getItem("ila.side") === "0") $("app").classList.add("collapsed"); } catch (e) {}
+  syncCollapseLabels();
+  document.addEventListener("keydown", e => {
+    if (e.key !== "Escape") return;
+    if ($("panel").classList.contains("open")) closePanel(); else if ($("drawer").classList.contains("open")) closeDrawer();
+  });
 
   const about = $("about"), openAbout = () => { closeDrawerIfOpen(); about.showModal(); };
   ["open-about", "open-about-drawer", "open-about-foot"].forEach(id => $(id).addEventListener("click", openAbout));
@@ -405,7 +491,8 @@ async function init() {
   addEventListener("online", syncOnline); addEventListener("offline", syncOnline); syncOnline();
 
   if (window.visualViewport) { visualViewport.addEventListener("resize", fitViewport); visualViewport.addEventListener("scroll", fitViewport); }
-  matchMedia("(min-width: 900px)").addEventListener("change", () => { $("drawer").classList.remove("open"); $("scrim").hidden = true; document.querySelector(".main").inert = false; });
+  matchMedia("(min-width: 1100px)").addEventListener("change", () => { $("drawer").classList.remove("open"); $("scrim").hidden = true; document.querySelector(".main").inert = false; syncHome(); });
+  matchMedia("(min-width: 1280px)").addEventListener("change", () => { $("panel-scrim").hidden = true; });
 
   addEventListener("beforeinstallprompt", e => { e.preventDefault(); deferredInstall = e; $("install").hidden = false; });
   $("install").onclick = async () => { if (!deferredInstall) return; deferredInstall.prompt(); await deferredInstall.userChoice; deferredInstall = null; $("install").hidden = true; };

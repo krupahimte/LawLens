@@ -429,6 +429,51 @@ def test_harness_flags_a_truncated_answer_that_was_not_reported():
     assert r.truncation_reported(None, []) is True
 
 
+# --------------------------------------------------------------------------- 7b. follow-up rewriting (user report: a complete question was rewritten into a false statement)
+HISTORY = [{"role": "user", "content": "should i sue my landlord"},
+           {"role": "assistant", "content": "The Central Government may give directions under the Information Technology Act [1]."}]
+OVERVIEW = "Give me an overview of the Bharatiya Nagarik Suraksha Sanhita, 2023."
+
+
+def spy_rewriter(monkeypatch, reply):
+    seen = {"calls": []}
+    monkeypatch.setattr(generation, "chat_once", lambda messages, max_tokens=120: seen["calls"].append(messages) or reply)
+    return seen
+
+
+def test_a_complete_question_is_never_rewritten(monkeypatch):
+    seen = spy_rewriter(monkeypatch, "The BNSS is a law that replaces the Information Technology Act, 2000.")
+    assert pipeline.standalone_question(OVERVIEW, HISTORY) == OVERVIEW
+    assert seen["calls"] == []                                   # the model was not even asked
+
+
+@pytest.mark.parametrize("followup", ["What about the punishment?", "And for women?", "Is it bailable?", "Explain that section"])
+def test_real_follow_ups_are_still_rewritten(monkeypatch, followup):
+    prior = [{"role": "user", "content": "What is the punishment for theft?"}]
+    seen = spy_rewriter(monkeypatch, "What is the punishment for theft under the BNS?\nextra line")
+    assert pipeline.standalone_question(followup, prior) == "What is the punishment for theft under the BNS?"
+    assert len(seen["calls"]) == 1
+
+
+def test_the_rewriter_never_sees_earlier_assistant_answers(monkeypatch):
+    seen = spy_rewriter(monkeypatch, "What is the punishment for it under the IT Act?")
+    pipeline.standalone_question("What about its punishment?", HISTORY)
+    roles = [m["role"] for m in seen["calls"][0]]
+    assert roles == ["system", "user", "user"]                    # system prompt, earlier USER question, the new question
+    assert all("Information Technology Act" not in m["content"] for m in seen["calls"][0])
+
+
+def test_an_implausibly_long_rewrite_falls_back_to_the_original_question(monkeypatch):
+    spy_rewriter(monkeypatch, "It is a comprehensive law enacted in India to modernize and streamline the legal framework for cyber security, "
+                              "digital governance and electronic transactions, and it replaces the Information Technology Act, 2000.")
+    assert pipeline.standalone_question("What about it?", HISTORY) == "What about it?"
+
+
+def test_no_history_means_no_rewrite(monkeypatch):
+    seen = spy_rewriter(monkeypatch, "x")
+    assert pipeline.standalone_question("What about it?", []) == "What about it?" and seen["calls"] == []
+
+
 # --------------------------------------------------------------------------- 8. what the checks cannot see (pinned, strict)
 @pytest.mark.xfail(strict=True, reason="'bailable offences need no bond' is a negative claim. 'bond' occurs in the sources, so no word-level check "
                    "can tell that no source states it. Only the prompt rule and a human reader (or entailment checking, out of scope) catch it.")

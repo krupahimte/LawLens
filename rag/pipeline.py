@@ -6,6 +6,7 @@
 
 ``answer_stream`` yields events (used by the streaming API); ``answer`` collects them.
 """
+import re
 import time
 from collections.abc import Iterator
 
@@ -53,13 +54,31 @@ def make_source(n: int, chunk: dict) -> dict:
     }
 
 
+FOLLOW_UP_RE = re.compile(
+    r"\b(?:it|its|that|this|these|those|they|them|their|he|she|his|her|same|above|previous|earlier|such|there|former|latter)\b"
+    r"|^\s*(?:and|also|then|so|but|what about|how about)\b", re.I)
+SHORT_FOLLOW_UP_WORDS = 5
+
+
+def looks_like_follow_up(question: str) -> bool:
+    """Only a message that depends on earlier turns needs rewriting. A complete question ("Give me an overview of the
+    BNSS") must reach retrieval exactly as typed: a 4B model asked to 'rewrite' it can invent content from earlier answers."""
+    return len(question.split()) <= SHORT_FOLLOW_UP_WORDS or bool(FOLLOW_UP_RE.search(question))
+
+
 def standalone_question(question: str, history: list[dict]) -> str:
-    if not history:
+    """Resolve 'it' / 'that section' using the user's EARLIER QUESTIONS only (never earlier answers, which may contain
+    text from unrelated topics or earlier mistakes). The result is accepted only if it is a plausible rewrite."""
+    earlier = [turn for turn in history if turn["role"] == "user"][-2:]
+    if not earlier or not looks_like_follow_up(question):
         return question
-    messages = [{"role": "system", "content": CONDENSE_PROMPT}, *history,
-                {"role": "user", "content": question}]
+    messages = [{"role": "system", "content": CONDENSE_PROMPT}, *earlier, {"role": "user", "content": question}]
     rewritten = generation.chat_once(messages, max_tokens=120)
-    return rewritten.splitlines()[0].strip() if rewritten else question
+    candidate = rewritten.splitlines()[0].strip() if rewritten else ""
+    # A rewrite is the same question made explicit, so it is not far longer than what the user typed.
+    if not candidate or len(candidate) > 3 * len(question) + 60:
+        return question
+    return candidate
 
 
 def _final(status: str, answer: str, language: str, sources: list[dict], notes: list[str],

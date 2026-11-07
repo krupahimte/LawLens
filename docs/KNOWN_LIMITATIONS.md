@@ -69,3 +69,13 @@ None of this was established by automated tests alone, and passing tests do **no
 ## Carried over, not touched in this task
 Chunk contamination (running headers / Gazette fragments inside chunks, failing verbatim checks E2/E7/S5/S9), exact-provision priority (KL-1), S11 retrieval miss,
 refusals returning status `answered` (E8, U1-U3), the first-schedule table text quality, and latency (about 1.7x the baseline median, driven by longer prompts and answers).
+
+## KL-7: follow-up rewriting (found by a user, 2026-11-07) and broad "overview" questions
+* The follow-up rewriter once turned a complete question ("Give me an overview of the BNSS, 2023") into a false statement about the IT Act, using an
+  earlier answer, and the assistant then "refuted" it. Fixed: a message is rewritten only if it looks like a follow-up (short, or "it/that/what about..."),
+  the rewriter sees only the user's earlier questions (never earlier answers), and an implausibly long rewrite is discarded. The heuristic can miss a
+  follow-up that has no reference word and is longer than five words (it is then answered as typed, which is the safe failure). Verified on the
+  reported conversation replayed against a copy of the chat database; not re-evaluated across the 43 cases.
+* A broad "overview of an Act" question is only answered from a handful of sections (preamble-type provisions); the assistant says it cannot describe the
+  Act's overall structure. In the replay it also abbreviated the BNSS as "BNS" and called BNSS 396 "the BNS": the model confuses the two similarly named
+  Acts. Nothing checks Act abbreviations.
